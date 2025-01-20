@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "iostream": "cpp",
+        "*.tcc": "cpp",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "bitset": "cpp",
+        "cstring": "cpp",
+        "typeinfo": "cpp"
+    }
+}
