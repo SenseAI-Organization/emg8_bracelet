@@ -34,55 +34,57 @@ SemaphoreHandle_t adc1Semaphore;
 void adc_task(void* pvParameters) {
     AdcTaskParams* params = static_cast<AdcTaskParams*>(pvParameters);
     ADS1015 ads(*params->i2c);
+    
+    // printf("%s: Starting initialization\n", params->name);
+    
     esp_err_t err = params->i2c->init();
     if (err) {
-        printf("Error initializing I2C: %s\n", esp_err_to_name(err));
+        // printf("Error initializing I2C for %s: %s\n", params->name, esp_err_to_name(err));
         vTaskDelete(NULL);
     }
+    // printf("%s: I2C initialized successfully\n", params->name);
 
     err = ads.init();
     if (err) {
-        printf("Error initializing ADC: %s\n", esp_err_to_name(err));
+        // printf("Error initializing ADC for %s: %s\n", params->name, esp_err_to_name(err));
         vTaskDelete(NULL);
     }
-
-    printf("ADC task %s initialized.\n", params->name);
-
-    esp_task_wdt_add(NULL); // Add the task to the watchdog
+    // printf("%s: ADC initialized successfully\n", params->name);
 
     SemaphoreHandle_t semaphore = (strcmp(params->name, "adc0") == 0) ? adc0Semaphore : adc1Semaphore;
 
     while (true) {
-        // Wait for the semaphore to be given
+        // printf("%s: Waiting for semaphore\n", params->name);
         if (xSemaphoreTake(semaphore, portMAX_DELAY) == pdTRUE) {
-            // Read ADC values for all 4 channels
-            for (int i = 0; i < 4; ++i) {
-                uint16_t value = ads.readSingleEndedSigned(i);
+            // printf("%s: Got semaphore, starting readings\n", params->name);
+            bool readingsOk = true;
 
-                // Lock the mutex to safely update shared data
+            for (int i = 0; i < 4; ++i) {
+                // printf("%s: Reading channel %d\n", params->name, i);
+                uint16_t value = ads.readSingleEndedSigned(i);
+                
+                if (err) {
+                    // printf("%s: Error reading channel %d\n", params->name, i);
+                    readingsOk = false;
+                    break;
+                }
+                
+                // printf("%s: Channel %d read: %d\n", params->name, i, value);
                 sDataMutex.lock();
                 sData.channels[params->startChannel + i] = value;
                 sDataMutex.unlock();
-
-                // Reset watchdog after processing each channel
-                esp_task_wdt_reset();
-
-                // Yield task execution briefly
-                taskYIELD();
             }
 
-            // Mark new data available
-            if (strcmp(params->name, "adc0") == 0) {
-                newDataAvailable_adc0 = true;
-            } else {
-                newDataAvailable_adc1 = true;
+            if (readingsOk) {
+                if (strcmp(params->name, "adc0") == 0) {
+                    newDataAvailable_adc0 = true;
+                    // printf("adc0: All readings complete, data marked as available\n");
+                } else {
+                    newDataAvailable_adc1 = true;
+                    // printf("adc1: All readings complete, data marked as available\n");
+                }
             }
-
-            // Reset watchdog again after finishing the batch
-            esp_task_wdt_reset();
-            taskYIELD();
         }
-        taskYIELD();
     }
 }
 
@@ -93,10 +95,10 @@ extern "C" void app_main() {
     adc1Semaphore = xSemaphoreCreateBinary();
 
     AdcTaskParams* params0 = new AdcTaskParams{"adc0", &i2c0, 0};
-    xTaskCreatePinnedToCore(adc_task, "ADC0 Task", 8192, params0, 10, NULL, 1);
+    xTaskCreatePinnedToCore(adc_task, "ADC0 Task", 8192, params0, 10, NULL, 1);  // Descomentada
 
     AdcTaskParams* params1 = new AdcTaskParams{"adc1", &i2c1, 4};
-    xTaskCreatePinnedToCore(adc_task, "ADC1 Task", 8192, params1, 10, NULL, 1);
+    xTaskCreatePinnedToCore(adc_task, "ADC1 Task", 8192, params1, 10, NULL, 1);  // Descomentada
 
     while (true) {
         // Signal tasks to read data
@@ -104,22 +106,25 @@ extern "C" void app_main() {
         xSemaphoreGive(adc1Semaphore);
 
         // Wait for new data from both tasks
+        TickType_t startTime = xTaskGetTickCount();
         while (!newDataAvailable_adc0 || !newDataAvailable_adc1) {
-            taskYIELD();
+            if ((xTaskGetTickCount() - startTime) > pdMS_TO_TICKS(1000)) {
+                printf("Main: Timeout waiting for data\n");
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
 
-        // Print the data
-        sDataMutex.lock();
-        printf("%d %d %d %d %d %d %d %d\n",
-            sData.channels[0], sData.channels[1], sData.channels[2], sData.channels[3],
-            sData.channels[4], sData.channels[5], sData.channels[6], sData.channels[7]);
-        sDataMutex.unlock();
+        if (newDataAvailable_adc0 && newDataAvailable_adc1) {
+            sDataMutex.lock();
+            printf("%d %d %d %d %d %d %d %d\n",
+                sData.channels[0], sData.channels[1], sData.channels[2], sData.channels[3],
+                sData.channels[4], sData.channels[5], sData.channels[6], sData.channels[7]);
+            sDataMutex.unlock();
+        }
 
-        // Reset data availability flags
         newDataAvailable_adc0 = false;
         newDataAvailable_adc1 = false;
-
-        // Short delay to control output frequency
-        vTaskDelay(pdMS_TO_TICKS(2));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
