@@ -31,19 +31,29 @@ struct sensorData {
 };
 sensorData sData;
 
+uint8_t buffer[2];
+
 extern "C" void app_main() {
     // Initialize I2C
     i2c0.init();
+    i2c1.init();
 
-    // Initialize ADS1015
-    ADS1015 adc(i2c0);
-    adc.init();
+    ADS1015 ads1(i2c0, ADS1015::ADS111X_Address::ADS111X_ADDR_GND);
+    ADS1015 ads2(i2c1, ADS1015::ADS111X_Address::ADS111X_ADDR_GND);
+
+    if (!ads1.checkForDevice()){
+        printf("ADS1 not found\n");
+    }
+    if (!ads2.checkForDevice()){
+        printf("ADS2 not found\n");
+    }
 
     while (true) {
         //printf("ADC Readings: ");
         for (int i = 0; i < 4; i++) {
-            uint16_t value = adc.readSingleEndedSigned(i);
-            printf("%d ", value);
+            uint16_t value1 = ads1.readSingleEndedSigned(i);
+            uint16_t value2 = ads2.readSingleEndedSigned(i);
+            printf("%d %d ", value1, value2);
         }
         printf("\n");
 
