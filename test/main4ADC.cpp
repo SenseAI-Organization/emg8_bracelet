@@ -12,12 +12,12 @@
 #include "actuators_sense.hpp"
 #include "switch_sense.hpp"
 
-constexpr gpio_num_t kSDA1 = GPIO_NUM_8;
-constexpr gpio_num_t kSCL1 = GPIO_NUM_18;
+constexpr gpio_num_t kSDA1 = GPIO_NUM_45;
+constexpr gpio_num_t kSCL1 = GPIO_NUM_47;
 I2C i2c1(I2C_NUM_1, kSDA1, kSCL1, 400000, false);
 
-constexpr gpio_num_t kSDA0 = GPIO_NUM_35;
-constexpr gpio_num_t kSCL0 = GPIO_NUM_36;
+constexpr gpio_num_t kSDA0 = GPIO_NUM_6;
+constexpr gpio_num_t kSCL0 = GPIO_NUM_7;
 I2C i2c0(I2C_NUM_0, kSDA0, kSCL0, 400000, false);
 
 struct AdcTaskParams {
@@ -39,7 +39,9 @@ extern "C" void app_main() {
     i2c1.init();
 
     ADS1015 ads1(i2c0, ADS1015::ADS111X_Address::ADS111X_ADDR_GND);
-    ADS1015 ads2(i2c1, ADS1015::ADS111X_Address::ADS111X_ADDR_GND);
+    ADS1015 ads2(i2c0, ADS1015::ADS111X_Address::ADS111X_ADDR_VCC);
+    ADS1015 ads3(i2c1, ADS1015::ADS111X_Address::ADS111X_ADDR_GND);
+    ADS1015 ads4(i2c1, ADS1015::ADS111X_Address::ADS111X_ADDR_VCC);
 
     if (!ads1.checkForDevice()){
         printf("ADS1 not found\n");
@@ -47,13 +49,22 @@ extern "C" void app_main() {
     if (!ads2.checkForDevice()){
         printf("ADS2 not found\n");
     }
+    if (!ads3.checkForDevice()){
+        printf("ADS2 not found\n");
+    }
+    if (!ads4.checkForDevice()){
+        printf("ADS2 not found\n");
+    }
+
 
     while (true) {
         //printf("ADC Readings: ");
         for (int i = 0; i < 4; i++) {
             uint16_t value1 = ads1.readSingleEndedSigned(i);
             uint16_t value2 = ads2.readSingleEndedSigned(i);
-            printf("%d %d ", value1, value2);
+            uint16_t value3 = ads3.readSingleEndedSigned(i);
+            uint16_t value4 = ads4.readSingleEndedSigned(i);
+            printf("%d %d %d %d ", value1, value2, value3, value4);
         }
         printf("\n");
 
